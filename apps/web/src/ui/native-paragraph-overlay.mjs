@@ -3,7 +3,7 @@ import {paragraphHit,paragraphLineEdge} from '../typesetting/rtex/paragraph-geom
 import {nativeEditMetrics,textBoundary} from './native-edit-metrics.mjs';
 import {snapshotDraft} from './native-draft-ink.mjs';
 import {changedTextblocks} from '../editor/changed-textblocks.mjs';
-import {markCenter} from '../editor/paragraph-marks.mjs';
+import {markCenter,paragraphEndMarker} from '../editor/paragraph-marks.mjs';
 
 // The document model and the IME always own the same mounted editable node.
 // The paper owns confirmed pixels. A dirty paragraph temporarily owns its ink
@@ -145,8 +145,8 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     marker.style.left=stop.x*100+'%';marker.style.top=stop.y*100+'%';
     marker.style.height=height+'px';marker.style.transform='translateY(-'+rise+'px)';
     const end=paragraph.stops.get(paragraph.entry.text.length);
-    if(end && page.dataset.formattingMarks==='true'){
-      if(!finishMark){finishMark=document.createElement('span');finishMark.className='native-rich-endmark';finishMark.setAttribute('aria-hidden','true');finishMark.textContent='¶';}
+    if(end && block.matches('p') && page.dataset.formattingMarks==='true'){
+      if(!finishMark)finishMark=paragraphEndMarker(page.ownerDocument);
       const last=sheetFor(end.row.page);
       if(last && last.dataset.paintRevision===String(revision)){
         if(finishMark.parentElement!==last)last.append(finishMark);
@@ -157,6 +157,13 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       }else finishMark.remove();
     }else {finishMark?.remove();finishMark=null;}
     main.classList.add('native-ink-confirmed');
+  }
+  function afterHeading(prev,next){
+    if(!editor.hasAttribute('data-native-article-sections') || !next.matches('p'))return null;
+    const units={H1:2.3,H2:1.5,H3:1.5}[prev.tagName];
+    // article evaluates the section's afterskip in the surrounding body
+    // font. The browser's heading margin is measured in the larger title font.
+    return units ? units*metrics(next).ex : null;
   }
   function referenceFor(paragraph,scale) {
     if(paragraph){
@@ -187,7 +194,8 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
         const lineHeight=parseFloat(getComputedStyle(block).lineHeight)*scale/sheet.height;
         if(!Number.isFinite(lineHeight))break;
         const first=prior.rows[0],x=paragraphStartX(block,prev.matches('p')?first.origin:null,sheet,scale);
-        return {offset:0,stop:{row:last,x,y:last.baseline+lineHeight*distance}};
+        const skip=(afterHeading(prev,block)??0)*scale/sheet.height;
+        return {offset:0,stop:{row:last,x,y:last.baseline+lineHeight*distance+skip}};
       }
       if(prev.textContent.trim() || prev.matches('.math-display,figure,table'))distance++;
     }
@@ -239,7 +247,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     }
     const box=canvas()?.getBoundingClientRect();
     const point=boundary(block,start,scale);
-    if(row && box){
+    if(row && box && matches(paragraph,block)){
       const stop=paragraph.stops.get(start);
       const at=stop.row===row?stop:stop.upstream;
       if(at){point.x=box.left+at.x*box.width;point.y=box.top+at.y*box.height;}
@@ -308,7 +316,11 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     const view=editor.editor?.view;
     if(!view || !editor.contains(element))return null;
     const pos=view.posAtDOM(element,0);
-    return pos<0?null:view.state.doc.resolve(pos).parent;
+    if(pos<0)return null;
+    // An atom has no editable interior. posAtDOM(atom,0) can resolve to
+    // its parent's content rather than to the displayed equation itself.
+    if(view.nodeDOM(pos)===element)return view.state.doc.nodeAt(pos);
+    return view.state.doc.resolve(pos).parent;
   }
   function matches(paragraph,element){
     if(!paragraph || !editor.contains(element))return false;
@@ -390,15 +402,18 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
         if(last)number=last.page;
         const box=canvas()?.getBoundingClientRect();
         if(!box?.height){position();return;}
-        if(previous.matches('p') && next.matches('p')){
+        const headingSkip=afterHeading(previous,next);
+        if(next.matches('p') && (previous.matches('p') || headingSkip!==null)){
           // TeX consumes consecutive empty paragraphs and advances by one
           // baseline from the last line containing ink, including a soft wrap.
           const offset=previous.textContent.length;
           const end=boundary(previous,offset,scale);
           const baseline=last && matches(previousParagraph,previous) ? box.top+last.baseline*box.height : end.y;
           const style=getComputedStyle(next),line=parseFloat(style.lineHeight);
-          if(!previous.querySelector('math-field,img') && Number.isFinite(line))
-            point.y=baseline+(offset ? (line+(parseFloat(style.marginTop)||0))*scale : 0);
+          if(!previous.querySelector('math-field,img') && Number.isFinite(line)){
+            const advance=offset || headingSkip!==null ? line+(headingSkip??0)+(parseFloat(style.marginTop)||0) : 0;
+            point.y=baseline+advance*scale;
+          }
         }
         storePin(next,0,point,box);
         if(pin && next.matches('p')){

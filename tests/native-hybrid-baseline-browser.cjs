@@ -126,6 +126,39 @@ async function testDraftPixels(page){
   console.log('Intermediate glyph origin displacement in CSS pixels',JSON.stringify({x:result.dx,y:result.dy}));
 }
 
+async function testFormulaDraft(page){
+  await page.addScriptTag({url:'/vendor/mathlive/mathlive.min.js'});
+  const result=await page.evaluate(async()=>{
+    const {snapshotDraft}=await import('/src/ui/native-draft-ink.mjs');
+    const {nativeEditMetrics}=await import('/src/ui/native-edit-metrics.mjs');
+    const root=document.createElement('section'),block=document.createElement('div'),sheet=document.createElement('div');
+    root.style.cssText='position:fixed;inset:0;z-index:9;';
+    block.style.cssText='position:absolute;left:23px;top:55px;zoom:1.44;font:14px serif;';
+    sheet.style.cssText='position:absolute;inset:0;';
+    const field=document.createElement('math-field');
+    field.value='\\frac{x+1}{2}';block.append(field);root.append(block,sheet);document.body.append(root);
+    try{
+      await customElements.whenDefined('math-field');
+      for(let i=0;i<150 && !field.shadowRoot?.querySelector('.ML__mathit');i++)
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+      await document.fonts.ready;
+      const glyphs=shadow=>[...shadow.querySelectorAll('.ML__mathit,.ML__cmr')].filter(n=>!n.childElementCount).map(n=>{
+        const rect=n.getBoundingClientRect();return {text:n.textContent,x:rect.left,y:rect.top};
+      });
+      const before=glyphs(field.shadowRoot);
+      const [held]=snapshotDraft(block,[{element:sheet,box:sheet.getBoundingClientRect()}],nativeEditMetrics(document));
+      field.remove();
+      const after=glyphs(held.querySelector('.native-pending-formula').shadowRoot);
+      return {before,after,fields:held.querySelectorAll('math-field').length};
+    }finally{root.remove();}
+  });
+  assert.equal(result.fields,0);
+  assert.ok(result.before.length>=3);
+  assert.deepEqual(result.before.map(g=>g.text),result.after.map(g=>g.text));
+  for(const [i,glyph] of result.before.entries())
+    assert.ok(Math.max(Math.abs(result.after[i].x-glyph.x),Math.abs(result.after[i].y-glyph.y))<=1,JSON.stringify(result));
+}
+
 // Exercise the shipped editor entry point. The bridge transports real rtex
 // display lists and recorded font resources. Editing, transactions, source
 // snapshots and the DOM handoff all run through the production application.
@@ -187,7 +220,7 @@ async function testDesktopDocument(browser, origin, initial) {
       await page.locator('header .open').waitFor({state:'attached'});
       assert.equal(await page.locator('header .open').isVisible(),false,'The initial paint must not expose the unassembled File controls');
     }finally{releaseEditor();}
-    await page.waitForLoadState('domcontentloaded');
+    await page.locator('header #toolbar-collapse').waitFor();
     const doc=page.locator('.document-page .ProseMirror');
     await page.locator('input#file').setInputFiles({name:'coordinates.tex',mimeType:'text/plain',buffer:Buffer.from(source)});
     await doc.getByText('Caption',{exact:true}).first().waitFor({state:'attached'});
@@ -390,7 +423,7 @@ async function testDesktopDocument(browser, origin, initial) {
       const { $anchor,$head }=el.editor.state.selection;
       return [$anchor.parentOffset,$head.parentOffset,$head.parent.textContent];
     }),['X中Y beta gamma two words end'.length,0,'X中Y beta gamma two words end']);
-    const headingSource=file.replace('\\begin{document}', '\\usepackage{indentfirst}\r\n\\begin{document}')
+    const headingSource=file.replace('\\begin{document}', '\\usepackage[margin=2.2cm]{geometry}\r\n\\usepackage{indentfirst}\r\n\\begin{document}')
       .replace(wrapped+'\r\n\r\nneighbor','\\section{这是标题}');
     const beforeHeading=revision;
     await page.locator('input#file').setInputFiles({name:'heading.tex',mimeType:'text/plain',buffer:Buffer.from(headingSource)});
@@ -438,13 +471,12 @@ async function testDesktopDocument(browser, origin, initial) {
       const native=row.items.filter(i=>i[0]==='g');
       assert.equal(native.map(i=>String.fromCodePoint(i[2])).join(''),phrase);
       const box=await sheet.locator('canvas').boundingBox();
-      for(const [i,glyph] of native.entries())displacement.push(Math.abs(draft[i].x-box.width*glyph[4]/dl.page_width),
-        Math.abs(draft[i].y-box.height*glyph[5]/dl.page_height));
+      displacement.push({phrase,x:Math.max(...native.map((g,i)=>Math.abs(draft[i].x-box.width*g[4]/dl.page_width))),
+        y:Math.max(...native.map((g,i)=>Math.abs(draft[i].y-box.height*g[5]/dl.page_height)))});
       assert.ok(Math.abs(box.y-paperTop)<=1,'Completing TeX must not scroll the paper');
     }
-    const maxDisplacement=Math.max(...displacement);
-    console.log('Heading and CJK paragraphs: draft to real glyph origin at 144%',maxDisplacement);
-    assert.ok(maxDisplacement<=2,'CJK glyph moved by '+maxDisplacement+' CSS pixels');
+    console.log('Heading and CJK paragraphs: draft to real glyph origin at 144%',JSON.stringify(displacement));
+    assert.ok(displacement.every(v=>v.x<=2 && v.y<=2),JSON.stringify(displacement));
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, repeated Enter, caret X/Y, CJK preedit/commit, and split-prefix ink through a delayed native frame');
   }catch(error){
@@ -585,6 +617,7 @@ async function testDesktopDocument(browser, origin, initial) {
     assert.ok(result.composing);assert.equal(result.staleCaret,false);
     assert.ok(result.indentError<.1,'Pending first line used its previous indent: '+result.indentError);
     await testDraftPixels(page);
+    await testFormulaDraft(page);
     if(process.argv.includes('--app'))await testDesktopDocument(browser,'http://127.0.0.1:'+server.address().port,captured);
     console.log('PASS: actual LuaLaTeX spans, repeated lines and empty paragraphs, marks, wraps and page crossings, native caret X, IME, stale frames');
   }finally{await browser?.close();server.closeAllConnections();await new Promise(done=>server.close(done));}

@@ -9,3 +9,14 @@ export function indentStroke(column,first,center,unit=1) {
   if(right<=left)return '';
   return 'M'+left+' '+center+'H'+right+'m0 '+(-tick)+'v'+(2*tick);
 }
+
+export function paragraphEndMarker(doc) {
+  const svg=doc.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('class','native-rich-endmark');
+  svg.setAttribute('aria-hidden','true');
+  const text=doc.createElementNS(svg.namespaceURI,'text');
+  text.setAttribute('dominant-baseline','middle');
+  text.textContent='¶';
+  svg.append(text);
+  return svg;
+}

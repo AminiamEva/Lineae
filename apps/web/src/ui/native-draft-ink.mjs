@@ -1,4 +1,4 @@
-import {markCenter} from '../editor/paragraph-marks.mjs';
+import {markCenter,paragraphEndMarker} from '../editor/paragraph-marks.mjs';
 
 const graphemes=new Intl.Segmenter(undefined,{granularity:'grapheme'});
 const eastAsian=/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}\u3000-\u303f\uff00-\uffef]/u;
@@ -29,13 +29,14 @@ export function snapshotDraft(block,sheets,measure) {
     }
     return {group,left:(x-sheet.box.left)*100/sheet.box.width+'%',top:(y-sheet.box.top)*100/sheet.box.height+'%'};
   };
-  let firstBaseline=null;
+  let firstBaseline=null,lastEnd=null;
   function paintText(text,rect,parent,wholeJustifiedLine=false) {
     if(!text || !rect.height || !rect.width)return;
     const style=getComputedStyle(parent);
     const fontBox=measure(parent,String.fromCodePoint(text.codePointAt(0)));
     const baseline=rect.top+fontBox.aboveRange*scale;
     firstBaseline??=baseline;
+    lastEnd={x:rect.right,y:baseline};
     const place=point(rect.left,baseline);
     if(!place)return;
     const ink=doc.createElement('span');
@@ -138,6 +139,11 @@ export function snapshotDraft(block,sheets,measure) {
       shadow.adoptedStyleSheets=source.adoptedStyleSheets;
       for(const style of source.querySelectorAll('style'))shadow.append(style.cloneNode(true));
       const glyphs=painted.cloneNode(true);
+      const baseline=painted.querySelector(':scope > .ML__strut')?.getBoundingClientRect().bottom;
+      if(Number.isFinite(baseline)){
+        firstBaseline??=baseline;
+        lastEnd={x:rect.right,y:baseline};
+      }
       for(const item of glyphs.querySelectorAll('.ML__caret,.ML__text-caret,.ML__latex-caret,.ML__selection'))item.remove();
       for(const item of glyphs.querySelectorAll('.ML__selected,.ML__contains-caret,.ML__contains-highlight'))
         item.classList.remove('ML__selected','ML__contains-caret','ML__contains-highlight');
@@ -162,7 +168,14 @@ export function snapshotDraft(block,sheets,measure) {
     paintText(label,{left:x,top:firstBaseline-fontBox.aboveRange*scale,width:1,height:1},block);
   }
   const indent=(parseFloat(style.textIndent)||0)*scale;
-  if(block.matches('p[data-indent=true]') && indent>2*scale && block.closest('.document-page')?.dataset.formattingMarks==='true'){
+  const showMarks=block.matches('p') && block.closest('.document-page')?.dataset.formattingMarks==='true';
+  if(showMarks && lastEnd){
+    const place=point(lastEnd.x+3*scale,markCenter(lastEnd.y,parseFloat(style.fontSize)*scale));
+    const end=paragraphEndMarker(doc);
+    Object.assign(end.style,{left:place.left,top:place.top,fontSize:parseFloat(style.lineHeight)*scale*.55+'px'});
+    place.group.append(end);
+  }
+  if(showMarks && lastEnd && indent>6*scale){
     const place=point(x+2*scale,markCenter(firstBaseline,parseFloat(style.fontSize)*scale));
     const mark=doc.createElement('span');
     mark.className='native-pending-indent';

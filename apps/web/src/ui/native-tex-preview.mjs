@@ -104,6 +104,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(preamble===editPreamble)return;
     editPreamble=preamble;
     const metrics=ctexEditStyle(preamble);
+    const standardSections=/\\documentclass\s*(?:\[[^\]]*\]\s*)?\{article\}/.test(preamble) &&
+      !/\\(?:ctexset|titleformat|titlespacing|@startsection|RedeclareSectionCommand)\b|\\(?:renewcommand|def)\s*\{?\s*\\(?:sub)*section\b|\{[^{}\r\n]*\btitlesec\b[^{}\r\n]*\}/.test(preamble);
+    richEditor.toggleAttribute('data-native-article-sections',standardSections);
     // Before the first Han character the exporter has not emitted ctex yet.
     // Select the same bundled face for composition as for its committed text.
     const autoSong=Boolean(metrics)||/\\documentclass(?:\[[^\]]*\])?\{article\}/.test(preamble)&&

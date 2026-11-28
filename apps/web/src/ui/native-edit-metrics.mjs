@@ -6,7 +6,7 @@ export function nativeEditMetrics(doc) {
   const sample=doc.createTextNode('');
   line.setAttribute('aria-hidden','true');
   line.style.cssText='position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;white-space:pre;padding:0;border:0;';
-  baseline.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline;';
+  baseline.style.cssText='display:inline-block;width:1ex;height:0;vertical-align:baseline;';
   line.append(sample,baseline);
   const range=doc.createRange();
   doc.fonts?.addEventListener('loadingdone',()=>cache.clear());
@@ -19,8 +19,8 @@ export function nativeEditMetrics(doc) {
     sample.data=character||'M';
     doc.body.append(line);
     range.selectNodeContents(sample);
-    const y=baseline.getBoundingClientRect().top;
-    const result={aboveRange:y-range.getBoundingClientRect().top,aboveLine:y-line.getBoundingClientRect().top};
+    const {top:y,width:ex}=baseline.getBoundingClientRect();
+    const result={aboveRange:y-range.getBoundingClientRect().top,aboveLine:y-line.getBoundingClientRect().top,ex};
     line.remove();
     if(cache.size>=256)cache.clear();
     cache.set(key,result);

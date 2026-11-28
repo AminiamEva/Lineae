@@ -643,6 +643,12 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await outlinePanel.locator('.document-outline-list button').count(),5);
     const secondHeading=paper.locator('h1').last();
     await secondHeading.evaluate(node=>node.closest('main').scrollBy({top:node.getBoundingClientRect().top-24,behavior:'instant'}));
+    const viewport=await secondHeading.evaluate(node=>{
+      const pane=node.closest('main'),bar=document.querySelector('header .floating-toolbar').getBoundingClientRect();
+      return {top:pane.getBoundingClientRect().top,bar:bar.bottom,scrolled:pane.scrollTop,
+        paperUnderRibbon:document.elementsFromPoint((bar.left+bar.right)/2,bar.bottom-3).some(el=>pane.contains(el))};
+    });
+    assert.ok(viewport.scrolled>0 && viewport.top>=viewport.bar && !viewport.paperUnderRibbon,JSON.stringify(viewport));
     assert.equal(await secondHeading.evaluate(node=>node.getBoundingClientRect().top <
       document.querySelector('header .floating-toolbar').getBoundingClientRect().bottom),true);
     await outlinePanel.getByRole('button',{name:/Second$/}).click();
